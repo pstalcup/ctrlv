@@ -1,5 +1,8 @@
 import { Task, Engine } from "grimoire-kolmafia";
-import { print } from "kolmafia";
+import { Monster } from "kolmafia";
+import { $monsters, get } from "libram";
+
+import { args } from "./lib";
 
 export type DietTask = Task & {
   priority?: number;
@@ -35,5 +38,30 @@ export class DietEngine extends Engine<"", DietTask> {
 
   complete(): boolean {
     return this.tasks.every((t) => this.taskQuantity.get(t.name) === t.quantity);
+  }
+}
+
+function gothMonster(monster: Monster) {
+  return `${monster}`.toLowerCase().includes("black crayon");
+}
+
+function hipsterMonster(monster: Monster) {
+  return $monsters`angry bassist, blue-haired girl, evil ex-girlfriend, peeved roommate, randome scenester`;
+}
+
+export class CopyEngine extends Engine {
+  execute(task: Task): void {
+    super.execute(task);
+    const lastMonster = get("lastCopyableMonster");
+    const source = args.copyOptions.freefightsource;
+
+    if (
+      lastMonster &&
+      args.copyOptions.target !== lastMonster &&
+      ((source === "goth" && gothMonster(lastMonster)) ||
+        (source === "hipster" && hipsterMonster(lastMonster)))
+    ) {
+      args.copyOptions.target = lastMonster;
+    }
   }
 }

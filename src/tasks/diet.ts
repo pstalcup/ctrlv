@@ -40,11 +40,16 @@ import {
 import { NumericProperty } from "libram/dist/propertyTypes";
 import { Mayo } from "libram/dist/resources/2015/MayoClinic";
 
+import { acquire } from "../acquire";
 import { DietTask, engineState } from "../engine";
 import { args, maxBy } from "../lib";
 
+function voa() {
+  return args.dietOptions.voa;
+}
+
 function cheapest(items: Item[]) {
-  return maxBy(items, (item: Item) => -mallPrice(item));
+  return maxBy(items, (item: Item) => -price(item));
 }
 
 function recipePrice(item: Item): number {
@@ -70,20 +75,9 @@ function price(item: Item): number {
   return (priceOverrides.get(item) ?? mallPrice)(item);
 }
 
-function acquire(qty: number, item: Item, maxPrice: number): number {
-  const startAmount = itemAmount(item);
-  const remaining = qty - startAmount;
-  if (item.tradeable) {
-    buy(remaining, item, maxPrice);
-  } else {
-    retrieveItem(remaining, item);
-  }
-  return itemAmount(item) - startAmount;
-}
-
 function eatSafe(qty: number, item: Item) {
   if (!get("_milkOfMagnesiumUsed")) {
-    acquire(1, $item`milk of magnesium`, 5 * args.voa);
+    acquire(1, $item`milk of magnesium`, 5 * voa());
     use($item`milk of magnesium`);
   }
   if (!eat(qty, item)) throw "Failed to eat safely";
@@ -169,7 +163,7 @@ function consumeSafe(
     if (itemType(item) === "food") eatSafe(qty, item);
     else if (itemType(item) === "booze") drinkSafe(qty, item);
     else if (itemType(item) === "spleen item") chewSafe(qty, item);
-    else if (item !== $item`Special Seasoning`) use(qty, item);
+    else if (item !== $item`Special Seasoning`) useSafe(qty, item);
   }
   engineState.consumed = qty;
 }
@@ -195,7 +189,7 @@ function legendaryFood(item: Item, data: MenuData = {}) {
   return menuItem(item, { ...data, maximum: get(property, false) ? 0 : 1 });
 }
 
-function organTasks(): DietTask[] {
+function menu(): MenuItem<MenuData>[] {
   const lasagna = cheapest($items`fishy fish lasagna, gnat lasagna, long pork lasagna`);
   const dreadPocket = cheapest(
     $items`Dreadsylvanian spooky pocket, Dreadsylvanian hot pocket, Dreadsylvanian cold pocket, Dreadsylvanian sleaze pocket, Dreadsylvanian stink pocket`
@@ -262,22 +256,12 @@ function organTasks(): DietTask[] {
     // menuItem($item`potion of the field gar`, { maximum: 1, buff: true }),
   ];
 
-  const organs = {
-    food: Math.max(args.stomach - myFullness(), 0),
-    booze: Math.max(args.liver - myInebriety(), 0),
-    spleen: Math.max(args.spleen - mySpleenUse(), 0),
-  };
+  return [...foods, ...boozes, ...spleens, ...helpers];
+}
 
-  print(
-    `Building diet VOA: ${args.voa} Stomach: ${organs.food} Liver: ${organs.booze} Spleen: ${organs.spleen}`
-  );
-
-  const menu = [...foods, ...boozes, ...spleens, ...helpers];
-
-  const diet = Diet.plan(args.voa, menu, organs);
-
+function dietTasks(diet: Diet<MenuData>) {
   const adv = diet.expectedAdventures();
-  const val = diet.expectedValue(args.voa, "gross");
+  const val = diet.expectedValue(voa(), "gross");
   const cost = diet.expectedPrice();
 
   const sortKey = (m: MenuItem<MenuData>) =>
@@ -294,18 +278,35 @@ function organTasks(): DietTask[] {
         do: () =>
           consumeSafe(
             engineState.consumed,
-            (engineState.consumed * entry.expectedValue(args.voa, diet, "gross")) / entry.quantity,
+            (engineState.consumed * entry.expectedValue(voa(), diet, "gross")) / entry.quantity,
             entry.menuItems
           ),
         quantity: entry.quantity,
         detail: `Items: ${entry.menuItems.join(
           ","
         )} Price: ${entry.expectedPrice()} Value: ${entry.expectedValue(
-          args.voa,
+          voa(),
           diet
         )} Adventures: ${entry.expectedAdventures(diet)}`,
       };
     });
+}
+
+function organTasks(): DietTask[] {
+  const organs = {
+    food: Math.max(args.dietOptions.stomach - myFullness(), 0),
+    booze: Math.max(args.dietOptions.liver - myInebriety(), 0),
+    spleen: Math.max(args.dietOptions.spleen - mySpleenUse(), 0),
+  };
+
+  print(
+    `Building diet VOA: ${voa()} Stomach: ${organs.food} Liver: ${organs.booze} Spleen: ${
+      organs.spleen
+    }`
+  );
+
+  const diet = Diet.plan(voa(), menu(), organs);
+  return dietTasks(diet);
 }
 
 function chocolateTasks() {
@@ -342,7 +343,7 @@ function chocolateTasks() {
 
   const quantity = [bestChocolate(0), bestChocolate(1), bestChocolate(2), bestChocolate(3)]
     .slice(get("_chocolatesUsed"))
-    .filter(({ value }) => value < args.voa).length;
+    .filter(({ value }) => value < voa()).length;
 
   const chocolateTask: DietTask = {
     name: "Fancy Chocolates",
@@ -350,7 +351,7 @@ function chocolateTasks() {
     do: () => {
       engineState.consumed = 1;
       const target = bestChocolate(get("_chocolatesUsed"));
-      acquire(1, target.item, target.adv * args.voa);
+      acquire(1, target.item, target.adv * voa());
       useSafe(1, bestChocolate(get("_chocolatesUsed")).item);
     },
     completed: () => false,
@@ -366,14 +367,14 @@ function chocolateTasks() {
     const quantity = adventures
       .slice(get(property))
       .map((a) => price(chocolate) / a)
-      .filter((v) => v < args.voa).length;
+      .filter((v) => v < voa()).length;
 
     return {
       name: `${chocolate}`,
       quantity: Math.min(quantity, limit ?? quantity),
       do: () => {
         engineState.consumed = 1;
-        acquire(1, chocolate, adventures[get(property)] * args.voa);
+        acquire(1, chocolate, adventures[get(property)] * voa());
         useSafe(1, chocolate);
       },
       completed: () => false,
@@ -395,6 +396,26 @@ function chocolateTasks() {
   ];
 }
 
-export function diet(): DietTask[] {
-  return [...organTasks(), ...chocolateTasks()].filter((t) => t.quantity > 0);
+function nightcapTasks(): DietTask[] {
+  const nightcapMenu = menu().filter((i) => {
+    if (i.data && i.data.cleans && (i.data.cleans.liver ?? 0) > 0) {
+      return false;
+    } else {
+      return true;
+    }
+  });
+
+  nightcapMenu.forEach((i) => {
+    if (i.item.inebriety > 0) {
+      i.size = 1;
+    }
+  });
+
+  return dietTasks(Diet.plan(voa(), nightcapMenu, { booze: 1 }));
+}
+
+export function diet(nightcap: boolean): DietTask[] {
+  return [...organTasks(), ...chocolateTasks(), ...(nightcap ? nightcapTasks() : [])].filter(
+    (t) => t.quantity > 0
+  );
 }
