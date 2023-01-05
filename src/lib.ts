@@ -1,9 +1,14 @@
 import { Args } from "grimoire-kolmafia";
-import { Monster } from "kolmafia";
-import { $monster } from "libram";
+import { fullnessLimit, inebrietyLimit, Monster, myFamiliar, spleenLimit } from "kolmafia";
+import { $familiar, $monster } from "libram";
+
+export function inebrietyLimitNoFamiliar() {
+  return inebrietyLimit() - (myFamiliar() === $familiar`Stooper` ? 1 : 0);
+}
 
 export const args = Args.create("evento", "run daily flags before a world event", {
   diet: Args.boolean({ help: "Consume an adventure maximizing diet", default: true }),
+  simulate: Args.boolean({ help: "simulate the diet", default: true }),
   copy: Args.boolean({
     help: "Copy monsters (will not spendy adventures unless turns is true)",
     default: true,
@@ -34,15 +39,15 @@ export const args = Args.create("evento", "run daily flags before a world event"
   }),
   stomach: Args.number({
     help: "The maximum stomach to use",
-    default: 15,
+    default: fullnessLimit(),
   }),
   liver: Args.number({
     help: "The maximum liver to use",
-    default: 15,
+    default: inebrietyLimitNoFamiliar(),
   }),
   spleen: Args.number({
     help: "The maximum spleen to use",
-    default: 15,
+    default: spleenLimit(),
   }),
 });
 

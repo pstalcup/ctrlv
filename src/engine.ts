@@ -1,4 +1,5 @@
 import { Task, Engine } from "grimoire-kolmafia";
+import { print } from "kolmafia";
 
 export type DietTask = Task & {
   priority?: number;
@@ -6,7 +7,11 @@ export type DietTask = Task & {
   detail: string;
 };
 
-class DietEngine extends Engine<"", DietTask> {
+export const engineState = {
+  consumed: 0,
+};
+
+export class DietEngine extends Engine<"", DietTask> {
   taskQuantity: Map<string, number>;
 
   constructor(tasks: DietTask[]) {
@@ -16,12 +21,19 @@ class DietEngine extends Engine<"", DietTask> {
 
   available(task: DietTask): boolean {
     const quantity = this.taskQuantity.get(task.name) ?? 0;
-    return quantity > task.quantity && super.available(task);
+    return quantity < task.quantity && super.available(task);
   }
 
   execute(task: DietTask): void {
+    engineState.consumed = task.quantity - (this.taskQuantity.get(task.name) ?? 0);
     super.execute(task);
-    const quantity = this.taskQuantity.get(task.name) ?? 0;
-    this.taskQuantity.set(task.name, quantity + 1);
+    this.taskQuantity.set(
+      task.name,
+      (this.taskQuantity.get(task.name) ?? 0) + engineState.consumed
+    );
+  }
+
+  complete(): boolean {
+    return this.tasks.every((t) => this.taskQuantity.get(t.name) === t.quantity);
   }
 }
